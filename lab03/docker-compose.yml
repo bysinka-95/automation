@@ -1,0 +1,11 @@
+services:
+  cron:
+    build: .
+    container_name: lab03-cron
+    environment:
+      API_KEY: ${API_KEY:-EXAMPLE_API_KEY}
+      # The lab02prep service published on port 8080 of the host
+      API_URL: ${API_URL:-http://host.docker.internal:8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
