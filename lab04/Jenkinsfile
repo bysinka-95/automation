@@ -1,0 +1,36 @@
+pipeline {
+    agent {
+        label 'php-agent'
+    }
+
+    stages {
+        stage('Install Dependencies') {
+            steps {
+                // Project preparation (install dependencies if needed)
+                echo 'Preparing project...'
+                git url: 'https://github.com/bysinka-95-cloud/timecapsule.git', branch: 'main'
+                sh 'composer install --no-interaction --no-progress'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                // Running tests
+                echo 'Running tests...'
+                sh 'vendor/bin/phpunit'
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline completed.'
+        }
+        success {
+            echo 'All stages completed successfully!'
+        }
+        failure {
+            echo 'Errors detected in the pipeline.'
+        }
+    }
+}
