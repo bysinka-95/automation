@@ -1,0 +1,17 @@
+FROM ubuntu:24.04
+
+# sshd for the connection from Jenkins, Java for the Jenkins agent process,
+# git for the pipelines and Ansible for the playbooks
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssh-server openjdk-21-jre-headless git ansible \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /run/sshd
+
+# The user for Jenkins. authorized_keys lets Jenkins log in with secrets/jenkins_ansible_agent_key.
+# ansible_test_server_key is the key that Ansible uses for the test server (see ansible/hosts.ini).
+RUN useradd -m -s /bin/bash jenkins \
+    && install -d -m 700 -o jenkins -g jenkins /home/jenkins/.ssh /home/jenkins/agent
+COPY --chown=jenkins:jenkins --chmod=600 secrets/jenkins_ansible_agent_key.pub /home/jenkins/.ssh/authorized_keys
+COPY --chown=jenkins:jenkins --chmod=600 secrets/ansible_test_server_key /home/jenkins/.ssh/ansible_test_server_key
+
+CMD ["/usr/sbin/sshd", "-D", "-e"]
