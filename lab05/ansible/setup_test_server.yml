@@ -1,0 +1,110 @@
+- name: Configure the test server for the PHP project
+  hosts: test_servers
+  become: true
+
+  tasks:
+    - name: Install Apache2
+      ansible.builtin.apt:
+        name: apache2
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install PHP, the PHP extensions of the project and Composer
+      ansible.builtin.apt:
+        name:
+          - libapache2-mod-php
+          - php-cli
+          - php-pgsql
+          - php-mbstring
+          - php-xml
+          - composer
+          - unzip
+
+    - name: Configure PHP for the project
+      ansible.builtin.copy:
+        dest: /etc/php/{{ php_version }}/apache2/conf.d/99-timecapsule.ini
+        mode: "0644"
+        content: |
+          ; Uploads a bit larger than MAX_UPLOAD_MB (5 MB), so the app can show its own message
+          upload_max_filesize = 6M
+          post_max_size = 8M
+          ; Never show errors to visitors
+          display_errors = Off
+          log_errors = On
+      notify: Reload Apache
+
+    - name: Install PostgreSQL
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          # The PostgreSQL modules of Ansible need psycopg2. "acl" lets Ansible become the postgres user.
+          - python3-psycopg2
+          - acl
+
+    - name: Start PostgreSQL
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+
+    - name: Create the database user
+      community.postgresql.postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+      become_user: postgres
+
+    - name: Create the database
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        owner: "{{ db_user }}"
+      become_user: postgres
+
+    - name: Create the project folder
+      ansible.builtin.file:
+        path: "{{ app_dir }}/public"
+        state: directory
+        mode: "0755"
+
+    - name: Configure the Apache virtual host for the project
+      ansible.builtin.copy:
+        dest: /etc/apache2/sites-available/timecapsule.conf
+        mode: "0644"
+        content: |
+          <VirtualHost *:80>
+              # Only public/ is reachable from the web. src/, views/, storage/ and .env are not.
+              DocumentRoot {{ app_dir }}/public
+
+              <Directory {{ app_dir }}/public>
+                  AllowOverride None
+                  Require all granted
+                  DirectoryIndex index.php
+                  # Existing files are served directly. Every other URL goes to index.php.
+                  FallbackResource /index.php
+              </Directory>
+
+              ErrorLog ${APACHE_LOG_DIR}/timecapsule-error.log
+              CustomLog ${APACHE_LOG_DIR}/timecapsule-access.log combined
+          </VirtualHost>
+      notify: Reload Apache
+
+    - name: Enable the project site
+      ansible.builtin.command: a2ensite timecapsule
+      args:
+        creates: /etc/apache2/sites-enabled/timecapsule.conf
+      notify: Reload Apache
+
+    - name: Disable the default site
+      ansible.builtin.command: a2dissite 000-default
+      args:
+        removes: /etc/apache2/sites-enabled/000-default.conf
+      notify: Reload Apache
+
+    - name: Start Apache
+      ansible.builtin.service:
+        name: apache2
+        state: started
+
+  handlers:
+    - name: Reload Apache
+      ansible.builtin.service:
+        name: apache2
+        state: reloaded

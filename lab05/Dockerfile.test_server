@@ -1,0 +1,20 @@
+FROM ubuntu:24.04
+
+# sshd for the connection from Ansible, sudo for "become", Python for the Ansible modules
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssh-server sudo python3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /run/sshd
+
+# Only SSH keys, no passwords and no root login
+RUN printf 'PasswordAuthentication no\nPermitRootLogin no\n' > /etc/ssh/sshd_config.d/keys-only.conf
+
+# The ansible user logs in with secrets/ansible_test_server_key and can run any command with sudo
+RUN useradd -m -s /bin/bash ansible \
+    && echo 'ansible ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ansible \
+    && install -d -m 700 -o ansible -g ansible /home/ansible/.ssh
+COPY --chown=ansible:ansible --chmod=600 secrets/ansible_test_server_key.pub /home/ansible/.ssh/authorized_keys
+
+# The container has no systemd. When the container starts again, start the services that the
+# playbook installed (if they exist), then run sshd in the foreground.
+CMD ["sh", "-c", "for s in postgresql apache2; do [ -x /etc/init.d/$s ] && service $s start; done; exec /usr/sbin/sshd -D -e"]

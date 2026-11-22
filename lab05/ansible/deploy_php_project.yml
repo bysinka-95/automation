@@ -1,0 +1,54 @@
+# Run with: ansible-playbook -i hosts.ini deploy_php_project.yml -e project_archive=/path/to/project.tar.gz
+# The tag "copy" copies the files. The tag "configure" configures the project.
+- name: Deploy the PHP project to the test server
+  hosts: test_servers
+  become: true
+
+  tasks:
+    - name: Copy the project files to the test server
+      ansible.builtin.unarchive:
+        src: "{{ project_archive }}"
+        dest: "{{ app_dir }}"
+      tags: copy
+
+    - name: Install the Composer packages without the dev packages
+      community.general.composer:
+        command: install
+        working_dir: "{{ app_dir }}"
+        no_dev: true
+        optimize_autoloader: true
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: "1"
+      tags: configure
+
+    - name: Write the settings of the project
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/.env"
+        owner: root
+        group: www-data
+        mode: "0640"
+        content: |
+          APP_URL={{ app_url }}
+          APP_DEBUG=false
+          DB_HOST=localhost
+          DB_PORT=5432
+          DB_NAME={{ db_name }}
+          DB_USER={{ db_user }}
+          DB_PASSWORD={{ db_password }}
+          AUTH_ENABLED=true
+      tags: configure
+
+    - name: Create the database tables
+      ansible.builtin.command: php bin/init-db.php
+      args:
+        chdir: "{{ app_dir }}"
+      changed_when: false
+      tags: configure
+
+    - name: Let Apache write the sessions and the uploads
+      ansible.builtin.file:
+        path: "{{ app_dir }}/storage"
+        owner: www-data
+        group: www-data
+        recurse: true
+      tags: configure

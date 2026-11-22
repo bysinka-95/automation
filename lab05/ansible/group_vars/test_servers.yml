@@ -1,0 +1,9 @@
+# Settings for both playbooks. Ansible reads this file for the hosts of the group test_servers.
+app_dir: /var/www/timecapsule
+app_url: http://localhost:8081
+php_version: "8.3"
+
+db_name: timecapsule
+db_user: timecapsule
+# A test server only. For a real server, keep the password in Ansible Vault.
+db_password: secret
